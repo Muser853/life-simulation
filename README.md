@@ -79,5 +79,5 @@ LS101: Vertex buffer reuse + indexed faces → Direct GPU mapping.
 Breaking Changes & Trade-offs
 Version	Key Break	Trade-off
 LS1 → LS101	Removed ProgressBar → Simplified UI	Lost progress visibility for large grids
-LS0 → LS1	steps now constructor arg → Flexible runtime config	Requires explicit parameter passing → Steeper learning curve
-LS1 → LS101	simulateForChance() uses m² reps → Higher accuracy	Increased CPU load for large m → Balanced by caching
+LS0 → LS1	Requires explicit parameter passing → Steeper learning curve
+LS1 → LS101	Increased CPU load for large m → Balanced by caching
