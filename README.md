@@ -3,6 +3,8 @@ LS0: "Get it working" → Focus on functional completeness
 LS1: "Make it faster" → Introduces concurrency and basic caching but retains some inefficiencies.
 LS101: "Optimize for scale" → Prioritizes memory efficiency, thread safety, and user experience.
 
+Repetition times are recently changed from row * col to 2 * row * col for better eliminating randomness with adaptable size.
+
 LifeSimulation0 failed due to storing full grid states in memory (e.g., ArrayList<Cell> with deep copies).
 LifeSimulation1/101 use incremental updates via tempGrid in Landscape.advance() and avoid storing entire grid histories, solving memory overflow.
 
