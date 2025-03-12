@@ -8,10 +8,9 @@ Repetition times are recently changed from row * col to 2 * row * col for better
 LifeSimulation0 failed due to storing full grid states in memory (ArrayList<Cell> with deep copies).
 LifeSimulation1/101 use incremental updates via tempGrid in Landscape.advance() and avoid storing entire grid histories, solving memory overflow.
 
-Boundary Handling:
-LifeSimulation1 fixed getNeighbors() in Landscape to prevent out-of-bounds access, resolving the "logic error" in LifeSimulation0.
-
+LifeSimulation1 fixed getNeighbors() in Landscape to prevent out-of-bounds access
 LifeSimulation0 had a bug in getNeighbors() causing edge cells to reference invalid indices.
+
 Resolving flickering artifacts, LifeSimulation1/101 fix this via:
 if (x >= 0 && x < rows && y >= 0 && y < cols) { ... }
 Experimental Setup
@@ -24,12 +23,12 @@ Flaw	LifeSimulation0	LifeSimulation1 Fix	LifeSimulation101 Enhancement
 Grid State Storage	Stored full grid states for all iterations → OOM	Uses temporary grid buffers to avoid history storage	Added configurable grid parameters to decouple from static fields
 Neighbor Boundary Checks	No boundary checks → Logic errors	Explicit boundary checks in getNeighbors()	Maintained checks with optimized grid access patterns
 Concurrency Control	synchronized methods → Contention	AtomicBoolean for recording state	Platform.runLater() for UI thread safety
-Data Aggregation	Sequential loop-based simulation runs	Parallel IntStream for chance-value iterations	Cache-based result reuse (simulationCache) for ~90% fewer runs
+Data Aggregation	Sequential loop-based simulation runs	Parallel IntStream for chance-value iterations	Cache-based result reuse (simulationCache) for fewer runs
 Visualization Performance	Direct landscape.draw() without clearing	Added gc.clearRect() in drawLandscape()	Optimized mesh indexing and face generation for smoother 3D surfaces
 
 Aspect	LifeSimulation0	LifeSimulation1	LifeSimulation101
 Caching Strategy	No explicit caching → Repeated simulations for same (m, n, chance)	Introduced basic cache but no duplicate check during data collection	Full cache utilization: Cache checks in simulateForChance()
-Concurrency	Single-threaded data collection → UI freezes during heavy computations	Parallel IntStream and CompletableFuture → 50% faster data collection	Fine-grained parallelism: Cache-aware parallel streams + atomic updates → faster over 50%
+Concurrency	Single-threaded data collection → UI freezes during heavy computations	Parallel IntStream and CompletableFuture → 50% faster data collection	Fine-grained parallelism: Cache-aware parallel streams + atomic updates → faster
 Memory Management	Stores full grid states for all steps → OOM at m=10+	tempGrid pattern in Landscape.advance() → Reduced half memory footprint	Cache + tempGrid → Eliminated OOM errors + Reduced over half memory for large grids
 
 			
@@ -53,19 +52,9 @@ Metric	LifeSimulation0	LifeSimulation1	LifeSimulation101
 Memory Usage (m=12)	2.4GB → OOM at m=13	1.2GB → Runs m=15	300MB → Stable up to m=20
 UI Freezing	Frequent freezes	Occasional lag	No visible freezes
 
-Code Quality Metrics
-Metric	LifeSimulation0	LifeSimulation1	LifeSimulation101
-Cyclomatic Complexity	89	72	55 (reduced branching)
-Thread Safety	Low	Moderate	High (atomic/async)
-Memory Footprint	High (O(n²))	Moderate (O(n))	Low (cache + tempGrid)
-
-From Monolithic to Modular:
-
 LS0: Mixed simulation logic with UI updates → Tight coupling.
 LS1: Split into simulateForChance() + async data tasks → Decoupled logic.
 LS101: Service-oriented design (e.g., createSurfaceMesh() as reusable component).
-
-Concurrency Model:
 
 LS0: Synchronized methods → Thread contention.
 LS1: CompletableFuture + parallelStream() → Task parallelism.
@@ -76,8 +65,6 @@ LS0: Per-face normal calculation → CPU-bound.
 LS1: Precompute normals → GPU-friendly arrays.
 LS101: Vertex buffer reuse + indexed faces → Direct GPU mapping.
 
-Breaking Changes & Trade-offs
-Version	Key Break	Trade-off
 LS1 → LS101	Removed ProgressBar → Simplified UI	Lost progress visibility for large grids
 LS0 → LS1	Requires explicit parameter passing → Steeper learning curve
 LS1 → LS101	Increased CPU load for large m → Balanced by caching
