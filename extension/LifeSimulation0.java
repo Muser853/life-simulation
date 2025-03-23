@@ -1,4 +1,3 @@
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ShortBuffer;
@@ -7,7 +6,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import javafx.application.Application;
@@ -37,9 +35,6 @@ import javax.imageio.ImageIO;
 public class LifeSimulation0 extends Application {
     private static int CHART_WIDTH = 1000, CHART_HEIGHT = 2000, MIN_SIZE = 1, SLEEP_TIME = 1, CELL_SIZE = 8, steps = 1024, max = 9;
     private static String OUTPUT_DIR = "simulation_results";
-    private int frameCount = 0;
-    private File videoDir;
-    private AtomicBoolean isRecording = new AtomicBoolean(false); // recording status
     private boolean isSimulationRunning = false;
     private Thread visualSimulationThread;
     private Map<String, LineChart<Number, Number>> charts;
@@ -47,65 +42,6 @@ public class LifeSimulation0 extends Application {
     private Canvas simulationCanvas;
     private VBox mainLayout;
     private Map<String, double[]> simulationCache = new HashMap<>();
-
-    private synchronized void startRecording() { // synchronized
-        if (isRecording.get()) return; // avoid repetitive starts
-        isRecording.set(true);
-        frameCount = 0;
-
-        // create video directory
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
-        videoDir = new File("video_frames_" + timestamp);
-        if (!videoDir.exists()) videoDir.mkdir();
-
-        // start recording thread
-        Thread recordingThread = new Thread(() -> {
-            while (isRecording.get()) {
-                try {
-                    // capture current GUI snapshot
-                    WritableImage snapshot = simulationCanvas.snapshot(null, null);
-                    BufferedImage bufferedImage = SwingFXUtils.fromFXImage(snapshot, null);
-
-                    //save frame
-                    File frameFile = new File(videoDir, String.format("frame_%05d.png", frameCount));
-                    ImageIO.write(bufferedImage, "png", frameFile);
-                    frameCount++;
-
-                    // control frame rate
-                    Thread.sleep(1000 / 30);
-                } catch (IOException | InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        recordingThread.setDaemon(true);
-        recordingThread.start();
-    }
-
-    private synchronized void stopRecording() { // synchronized for thread safety
-        if (!isRecording.get()) return; // avoid repetitive stops
-        isRecording.set(false);
-
-        // usibng FFmpeg to synthesize video
-        try {
-            String outputVideo = "output_video_" + System.currentTimeMillis() + ".mp4";
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                "ffmpeg",
-                "-framerate", "30",
-                "-i", videoDir.getAbsolutePath() + "/frame_%05d.png", // input frame
-                "-c:v", "libx264", // video encoder
-                "-pix_fmt", "yuv420p", // pixel format
-                outputVideo
-            );
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
-            process.waitFor(); // wait for FFmpeg to finish
-
-            System.out.println("Video saved to: " + outputVideo);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 
     private long simulateSingleRun(Landscape landscape) {
         for (int step = 0; step < steps; step++)
@@ -134,25 +70,33 @@ public class LifeSimulation0 extends Application {
         simulationCache.put(cacheKey, result); // Cache the result
         return result;
     }
-
     private void updateChart(String key, double chance, double[] data) {
         double avg = data[0];
         double stdv = data[1];
         LineChart<Number, Number> chart = charts.get(key);
-        chart.setLegendVisible(true);
+
+        // Ensure the chart has enough series before accessing them
+        while (chart.getData().size() < 3) {
+            chart.getData().add(new XYChart.Series<>());
+        }
 
         XYChart.Series<Number, Number> mainSeries = chart.getData().get(0);
         XYChart.Series<Number, Number> upperSeries = chart.getData().get(1);
         XYChart.Series<Number, Number> lowerSeries = chart.getData().get(2);
 
+        // Add data points for average, lower, and upper bounds
+        mainSeries.getData().add(new XYChart.Data<>(chance, avg));
         double lower = avg - stdv;
         double upper = avg + stdv;
         lowerSeries.getData().add(new XYChart.Data<>(chance, lower));
         upperSeries.getData().add(new XYChart.Data<>(chance, upper));
-        mainSeries.getData().add(new XYChart.Data<>(chance, avg));
-        mainSeries.setName("Average");
-        upperSeries.setName("Avg + Std");
-        lowerSeries.setName("Avg - Std");
+
+        // Update the yAxis upper bound to the maximum average living cells
+        NumberAxis yAxis = (NumberAxis) chart.getYAxis();
+        double currentMax = yAxis.getUpperBound();
+        if (avg > currentMax) {
+            yAxis.setUpperBound(avg); // Set upper bound to avg for exact matching
+        }
     }
 
     private void show3DStage(Group root3D) {
@@ -244,6 +188,38 @@ public class LifeSimulation0 extends Application {
             }
             bos.flush();
             System.out.println("Saved 3D model to: " + filename);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        // Save OBJ file
+        String objFilename = filename.replace(".stl", ".obj");
+        try (FileOutputStream fos = new FileOutputStream(objFilename);
+             BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+            // Write OBJ file header
+            bos.write("# LifeSimulation1 OBJ Export\n".getBytes());
+            
+            // Write vertices and faces
+            for (Node node : root.getChildren()) {
+                if (node instanceof MeshView) {
+                    MeshView meshView = (MeshView) node;
+                    TriangleMesh mesh = (TriangleMesh) meshView.getMesh();
+                    ObservableFloatArray points = mesh.getPoints();
+                    ObservableFaceArray faces = mesh.getFaces();
+
+                    // Write vertices
+                    for (int i = 0; i < points.size(); i += 3) {
+                        bos.write(String.format("v %f %f %f\n", points.get(i), points.get(i + 1), points.get(i + 2)).getBytes());
+                    }
+
+                    // Write faces
+                    for (int i = 0; i < faces.size(); i += 3) {
+                        bos.write(String.format("f %d %d %d\n", faces.get(i) + 1, faces.get(i + 1) + 1, faces.get(i + 2) + 1).getBytes());
+                    }
+                }
+            }
+            bos.flush();
+            System.out.println("Saved OBJ model to: " + objFilename);
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -478,7 +454,6 @@ public class LifeSimulation0 extends Application {
 
     @Override
     public void start(Stage stage) {
-    // Initialize components
         currentLandscape = new Landscape(max, max, 0.5);
         Canvas simulationCanvas = new Canvas(max * CELL_SIZE, max * CELL_SIZE);
         GraphicsContext gc = simulationCanvas.getGraphicsContext2D();
@@ -487,9 +462,9 @@ public class LifeSimulation0 extends Application {
         charts = new HashMap<>();
         ProgressBar progressBar = new ProgressBar(0);
 
-        int totalTasks = (max - MIN_SIZE + 1)*(max - MIN_SIZE + 1)*21;
+        int totalTasks = (max - MIN_SIZE + 1) * (max - MIN_SIZE + 1) * 21;
         AtomicInteger progress = new AtomicInteger(0);
-        Platform.runLater(() -> progressBar.setProgress((double)progress.get()/totalTasks));
+        Platform.runLater(() -> progressBar.setProgress((double) progress.get() / totalTasks));
 
         progress.incrementAndGet();
 
@@ -520,11 +495,9 @@ public class LifeSimulation0 extends Application {
 
         startSimButton.setOnAction(_ -> {
             runVisualSimulation();
-            startRecording();
         });
         stopSimButton.setOnAction(_ -> {
             isSimulationRunning = false;
-            stopRecording();
         });
         resetSimButton.setOnAction(_ -> {
             isSimulationRunning = false;
@@ -533,8 +506,12 @@ public class LifeSimulation0 extends Application {
         });
         saveButton.setOnAction(_ -> {
             saveAllCharts(charts);
-            try { saveSimulationState("current_state"); } catch (IOException e1) {}
+            try {
+                saveSimulationState("current_state");
+            } catch (IOException e1) {
+            }
         });
+
     // Layout setup
         HBox buttonPane = new HBox(10);
         buttonPane.getChildren().addAll(startSimButton, stopSimButton, resetSimButton, saveButton, chanceValueLabel);
@@ -557,31 +534,41 @@ public class LifeSimulation0 extends Application {
         for (int m = MIN_SIZE; m <= max; m++) {
             for (int n = MIN_SIZE; n <= m; n++) {
                 final NumberAxis xAxis = new NumberAxis(0, 1, 0.05);
-                final NumberAxis yAxis = new NumberAxis(0, 10, 1);
+                final NumberAxis yAxis = new NumberAxis(0, 2, 1); // Initial upper bound = 2
                 xAxis.setLabel("Chance");
                 yAxis.setLabel("Average Living Cells");
-
                 LineChart<Number, Number> chart = new LineChart<>(xAxis, yAxis);
                 chart.setTitle(m + "x" + n + " Landscape");
                 chart.setCreateSymbols(false);
                 chart.setPrefSize(CHART_WIDTH, CHART_HEIGHT);
 
                 XYChart.Series<Number, Number> mainSeries = new XYChart.Series<>();
-                XYChart.Series<Number, Number> upperSeries = new XYChart.Series<>();
-                XYChart.Series<Number, Number> lowerSeries = new XYChart.Series<>(); 
-
-                upperSeries.getNode().setStyle("-fx-stroke: gray; -fx-stroke-dash-array: 0.5 0.5;");
-                lowerSeries.getNode().setStyle("-fx-stroke: gray; -fx-stroke-dash-array: 0.5 0.5;");
-                mainSeries.getNode().setStyle("-fx-stroke: blue;");
-                
-                @SuppressWarnings("unchecked")
-                XYChart.Series<Number, Number>[] seriesArray = 
-                    new XYChart.Series[]{mainSeries, upperSeries, lowerSeries};
-                chart.getData().addAll(seriesArray);
+                chart.getData().add(mainSeries);
 
                 String key = m + "," + n;
                 charts.put(key, chart);
-                    gridPane.add(chart, n , m );
+                gridPane.add(chart, n, m);
+
+                // Apply styles after adding the series to the chart
+                Platform.runLater(() -> {
+                    mainSeries.getNode().setStyle("-fx-stroke: blue;");
+                    chart.setStyle("-fx-background-color: white;"); // Ensure background is visible
+                });
+            }
+        }
+
+        // After collecting simulation data, update the yAxis upper bounds
+        Map<String, Map<Double, double[]>> allData = collectSimulationData();
+        for (int m = MIN_SIZE; m <= max; m++) {
+            for (int n = MIN_SIZE; n <= m; n++) {
+                String key = m + "," + n;
+                double maxAverage = allData.get(key).values().stream()
+                    .mapToDouble(data -> data[0]) // Assuming data[0] is the average living cells
+                    .max()
+                    .orElse(10); // Fallback to 10 if no data is available
+
+                NumberAxis yAxis = (NumberAxis) charts.get(key).getYAxis();
+                yAxis.setUpperBound(maxAverage); // Set upper bound dynamically
             }
         }
 
@@ -593,12 +580,10 @@ public class LifeSimulation0 extends Application {
         mainLayout.setCenter(scrollPane);
         mainLayout.setTop(simulationPane);
 
-    // Precompute the 3D model data
-        Map<String, Map<Double, double[]>> allData = collectSimulationData();
+        // Precompute the 3D model data
         Group root3D = initialize3DRoot();
         create3DVisualizations(root3D, allData);
         show3DStage(root3D);
-
         startChartsSimulation();
 
         Scene scene = new Scene(mainLayout, 1200, 800);
@@ -631,14 +616,12 @@ public class LifeSimulation0 extends Application {
                 allData.put(key, chanceData);
             }
         }
-
         // Create surface visualization using complete allData
         createSurfaceVisualization(root3D, allData);
 
         // Show 3D stage without saving models every time
         show3DStage(root3D);
     }
-
     private Map<String, Map<Double, double[]>> collectSimulationData() {
         Map<String, Map<Double, double[]>> allData = new ConcurrentHashMap<>();
         CompletableFuture<?>[] futures = new CompletableFuture[max - MIN_SIZE + 1];
