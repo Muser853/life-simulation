@@ -7,8 +7,6 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import java.io.File;
-import java.io.FileOutputStream;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.chart.LineChart;
@@ -17,15 +15,19 @@ import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.function.Consumer;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.paint.Color;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
 public class LifeSimulation2 extends Application {
     private static final int CHART_WIDTH = 500, CHART_HEIGHT = 800, CELL_SIZE = 16;
@@ -149,28 +151,33 @@ public class LifeSimulation2 extends Application {
     }
 
     private void runSimulations() {
-        for (int width = 1; width <= max; width++) {
-            for (int height = 1; height <= max; height++) {
-                for (int depth = 1; depth <= max; depth++) {
-                    int volume = width * height * depth;
-                    int halfCubeRoot = (int) Math.cbrt(volume) / 2;
-                    for (int lowValue = 1; lowValue <= halfCubeRoot; lowValue++) {
-                        for (int upValue = 1; upValue <= halfCubeRoot; upValue++) {
-                            for (int upperValue = 1; upperValue <= halfCubeRoot; upperValue++) {
-                                String key = String.format(
-                                    "Width: %d, Height: %d, Depth: %d, Low: %d, Up: %d, Upper: %d",
-                                    width, height, depth, lowValue, upValue, upperValue
-                                );
-                                LineChart<Number, Number> chart = createChart(key);
-                                charts.put(key, chart);
+        try (ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())) {
+            for (int width = 1; width <= max; width++) {
+                for (int height = 1; height <= max; height++) {
+                    for (int depth = 1; depth <= max; depth++) {
+                        Landscape2 scape = new Landscape2(width, height, depth);
+                        int volume = width * height * depth;
+                        int halfCubeRoot = (int) Math.cbrt(volume) / 2;
+    
+                        executor.submit(() -> {
+                            for (int lowValue = 1; lowValue <= halfCubeRoot; lowValue++) {
+                                for (int upValue = 1; upValue <= halfCubeRoot; upValue++) {
+                                    for (int upperValue = 1; upperValue <= halfCubeRoot; upperValue++) {
+                                        String key = String.format(
+                                            "Width: %d, Height: %d, Depth: %d, Low: %d, Up: %d, Upper: %d",
+                                            width, height, depth, lowValue, upValue, upperValue
+                                        );
+                                        LineChart<Number, Number> chart = createChart(key);
+                                        charts.put(key, chart);
+                                    }
+                                }
                             }
-                        }
+                        } );
                     }
                 }
             }
         }
     }
-
     @SuppressWarnings("unchecked")
     private void updateCharts(int minIterations, int maxIterations, double averageIterations) {
         for (Map.Entry<String, LineChart<Number, Number>> entry : charts.entrySet()) {
