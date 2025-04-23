@@ -1,10 +1,11 @@
 import java.awt.Color;
 import java.awt.Graphics;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
+import java.util.HashMap;
 
 public class Landscape2 {
     public enum GridType {
@@ -25,42 +26,49 @@ public class Landscape2 {
             GridType.SQUARE, // Default grid type
             dimensionsSizes.length
         );
+        initializeHighDimLandscape();
     }
+    
     public Landscape2(int rows, int columns, int depth, GridType gridType, int dimensions) {
         this.dimensions = Math.max(3, dimensions); // Minimum 3D
         this.gridType = gridType;
-        this.highDimLandscape = new HashMap<>(); // Explicit initialization
+        this.highDimLandscape = new HashMap<>();
         this.rows = rows;
         this.columns = columns;
         this.depth = depth;
-        
+        maxCoordinates = new int[dimensions];
+        maxCoordinates[0] = rows;
+        maxCoordinates[1] = columns;
+        maxCoordinates[2] = depth;
+        for (int i = 3; i < dimensions; i++) {
+            maxCoordinates[i] = 1;
+        }
         if (dimensions <= 3) {
             landscape = new Cell[rows][columns][depth];
             for (int i = 0; i < rows; i++) {
                 for (int j = 0; j < columns; j++) {
-                    for (int k = 0; k < depth; k++) {
-                        landscape[i][j][k] = new Cell();
-                    }
+                    Arrays.fill(landscape[i][j], new Cell(false));
                 }
             }
         } else {
             initializeHighDimLandscape();
         }
+        initializeBitmaskConfig();
     }
-    // private void initializeBitmaskConfig() {
-    //     bitsPerDimension = new int[dimensions];
-    //     dimensionMasks = new long[dimensions];
-    //     int totalBits = 0;
-    //     for (int i = 0; i < dimensions; i++) {
-    //         int size = maxCoordinates[i];
-    //         bitsPerDimension[i] = (int) (Math.log(size) / Math.log(2)) + 1;
-    //         dimensionMasks[i] = (1L << bitsPerDimension[i]) - 1;
-    //         totalBits += bitsPerDimension[i];
-    //         if (totalBits > 64) {
-    //             throw new IllegalArgumentException("Too many dimensions or too large size");
-    //         }
-    //     }
-    // }
+     private void initializeBitmaskConfig() {
+         bitsPerDimension = new int[dimensions];
+         dimensionMasks = new long[dimensions];
+         int totalBits = 0;
+         for (int i = 0; i < dimensions; i++) {
+             int size = maxCoordinates[i];
+             bitsPerDimension[i] = (int) (Math.log(size) / Math.log(2)) + 1;
+             dimensionMasks[i] = (1L << bitsPerDimension[i]) - 1;
+             totalBits += bitsPerDimension[i];
+             if (totalBits > 64) {
+                 throw new IllegalArgumentException("Too many dimensions or too large size");
+             }
+         }
+     }
     private long createCoordinateMask(List<Integer> coords) {
         long mask = 0;
         int offset = 0;
@@ -78,21 +86,13 @@ public class Landscape2 {
         }
         return (int) ((mask >> offset) & dimensionMasks[dim]);
     }
-
-    private int getBitOffset(int dim) {
-        int offset = 0;
-        for (int i = 0; i < dim; i++) {
-            offset += bitsPerDimension[i];
-        }
-        return offset;
-    }
     public Cell getHighDimCell(List<Integer> coords) {
         long mask = createCoordinateMask(coords);
         return highDimLandscape.get(mask);
     }
 
     public Landscape2(int rows, int columns) {
-        this(rows, columns, 1, GridType.SQUARE, 2);
+        this(rows, columns, 1, GridType.SQUARE, 3);
     }
     public void initializeLandscape(int lower, int low, int up, int upper) {
         if (dimensions > 3) {
@@ -127,7 +127,6 @@ public class Landscape2 {
             allCells.get(i).setAlive(true);
         }
     }
-
     private void clearAllCells() {
         if (dimensions <= 3) {
             for (var cellLayer : landscape) {
@@ -354,24 +353,21 @@ public class Landscape2 {
         if (z < depth-1) addCellIfValid(neighbors, row, col, z+1);   // Direct below
         return neighbors;
     }
+    
     private void addCellIfValid(ArrayList<Cell> neighbors, int row, int col, int z) {
         if (row >= 0 && row < rows && col >= 0 && col < columns && z >= 0 && z < depth)
             neighbors.add(landscape[row][col][z]);
     }
+    
     public void advance() {
-        // Check if the dimensions are greater than 3
         if (dimensions > 3) {
-            // If so, call the advanceHighDim() method
             advanceHighDim();
             return;
         }
-        // Now calculate the next state
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < columns; j++) {
                 for (int k = 0; k < depth; k++) {
-                    // Get the neighbors of the current cell
                     ArrayList<Cell> neighbors = getNeighbors(i, j, k);
-                    // Update the state of the current cell based on its neighbors
                     landscape[i][j][k].updateState(neighbors);
                 }
             }
@@ -394,15 +390,16 @@ public class Landscape2 {
             }
         }
     }
-        public int getSize(int dim) {
-            if (dim >= dimensions)
-                throw new IllegalArgumentException("Invalid dimension index");
-            return maxCoordinates[dim];
-        }
+    public int getSize(int dim) {
+        if (dim >= dimensions)
+            throw new IllegalArgumentException("Invalid dimension index");
+        return maxCoordinates[dim];
+    }
     private void initializeHighDimLandscape() {
         highDimLandscape = new HashMap<>();
         generateCoordinates(new ArrayList<>(), 0);
     }
+    
     private void generateCoordinates(List<Integer> coords, int dim) {
         if (dim == dimensions) {
             long mask = createCoordinateMask(coords); // Convert to mask
@@ -424,21 +421,18 @@ public class Landscape2 {
         return coords;
     }
     // Advance the simulation for higher dimensional space
+    
     private void advanceHighDim() {
         Map<Long, Cell> nextGen = new HashMap<>();
         for (Map.Entry<Long, Cell> entry : highDimLandscape.entrySet()) {
             List<Integer> coords = decodeCoordinates(entry.getKey());
             Cell current = entry.getValue();
             ArrayList<Cell> neighbors = getHighDimNeighbors(coords);
-            boolean alive = current.getAlive();
-            int liveNeighbors = 0;
-            for (Cell neighbor : neighbors) 
-                if (neighbor.getAlive())
-                    liveNeighbors++;
-            boolean nextAlive = alive 
-                ? (liveNeighbors >= current.getLower() && liveNeighbors <= current.getUpper()) 
+            long liveNeighbors = neighbors.stream().filter(Cell::getAlive).count();
+            boolean nextAlive = current.getAlive()
+                ? (liveNeighbors >= current.getLower() && liveNeighbors <= current.getUpper())
                 : (liveNeighbors >= current.getLow() && liveNeighbors <= current.getUp());
-            nextGen.put(entry.getKey(), new Cell(nextAlive)); // Preserve original key
+            nextGen.put(entry.getKey(), new Cell(nextAlive)); // preserve original key
         }
         highDimLandscape.clear();
         highDimLandscape.putAll(nextGen);
@@ -469,38 +463,32 @@ public class Landscape2 {
         }
     }
     private ArrayList<Cell> getHighDimNeighbors(List<Integer> coords) {
-        long currentMask = createCoordinateMask(coords);
         ArrayList<Cell> neighbors = new ArrayList<>();
-
         for (int dim = 0; dim < dimensions; dim++) {
-            int coord = getCoordinate(currentMask, dim);
-            for (int delta : new int[]{-1, 1}) {
-                int newCoord = coord + delta;
-                if (newCoord < 0 || newCoord >= maxCoordinates[dim])
-                    continue;
-                int offset = getBitOffset(dim);
-                long maskDelta = (long)newCoord << offset;
-                long neighborMask = currentMask & ~((dimensionMasks[dim] << offset));
-                neighborMask |= maskDelta;
-                Cell neighbor = highDimLandscape.get(neighborMask);
-                if (neighbor != null) neighbors.add(neighbor);
+            for (int delta : new int[]{-1, 0, 1}) {
+                List<Integer> temp = new ArrayList<>(coords);
+                temp.set(dim, coords.get(dim) + delta);
+                if (isValidCoordinate(temp)) {
+                    Cell neighbor = getCell(temp);
+                    if (neighbor != null && !temp.equals(coords)) {
+                        neighbors.add(neighbor);
+                    }
+                }
             }
         }
         return neighbors;
     }
-    /*TEST: private boolean isValidCoordinate(List<Integer> coords) {
+    private boolean isValidCoordinate(List<Integer> coords) {
         for (int i = 0; i < coords.size(); i++) {
             if (coords.get(i) < 0 || coords.get(i) >= maxCoordinates[i]) {
                 return false;
             }
         }
         return true;
-    }
-    private void resetHighDimLandscape() {
+    }/*TEST: private void resetHighDimLandscape() {
         highDimLandscape.clear();
         generateCoordinates(new ArrayList<>(), 0, 0L);
     }
-
     private void generateCoordinates(List<Integer> coords, int currentDim, long currentMask) {
         if (currentDim == dimensions) {
             highDimLandscape.put(currentMask, new Cell(true));

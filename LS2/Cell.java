@@ -3,7 +3,13 @@ public class Cell {
     private boolean alive;
     private int lower, low, up, upper;
 
-    public Cell() {this.alive = false;}
+    public Cell() {
+        this.alive = false;
+        this.lower = 1;
+        this.low = 2;
+        this.up = 3;
+        this.upper = 4;
+    }
     public Cell(boolean alive) {this.alive = alive;}
     public int getLower() {return lower;}
     public int getLow() {return low;}
@@ -18,7 +24,6 @@ public class Cell {
         this.up = up;
         this.upper = upper;
     }
-
     public void updateLower(int lower) {
         this.lower = lower;
     }
@@ -31,12 +36,10 @@ public class Cell {
     public void updateUpper(int upper) {
         this.upper = upper;
     }
-    
     @Override
     public String toString() {
         return alive ? "0" : "1"; // "0" for alive, "1" for dead
     }
-    // Updates the Cell's state based on neighbors
     public void updateState(List<Cell> neighbors) {
         int liveNeighbors = (int) neighbors.stream().filter(Cell::getAlive).count();
         if (alive) {
@@ -46,12 +49,5 @@ public class Cell {
             // Cell becomes alive if liveNeighbors is within [low, up]
             alive = (liveNeighbors >= low && liveNeighbors <= up);
         }
-    }
-    // Main method for testing
-    public static void main(String[] args) {
-        Cell cell1 = new Cell();
-        Cell cell2 = new Cell(true);
-        System.out.println(cell1); // Should print "1"
-        System.out.println(cell2); // Should print "0"
     }
 }

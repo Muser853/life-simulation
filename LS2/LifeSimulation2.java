@@ -1,4 +1,5 @@
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
@@ -26,15 +27,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.Path;
-// import org.w3c.dom.Document;
-// import org.w3c.dom.Element;
-// import javax.xml.parsers.DocumentBuilder;
-// import javax.xml.parsers.DocumentBuilderFactory;
-// import javax.xml.transform.OutputKeys;
-// import javax.xml.transform.Transformer;
-// import javax.xml.transform.TransformerFactory;
-// import javax.xml.transform.dom.DOMSource;
-// import javax.xml.transform.stream.StreamResult;
+
 public class LifeSimulation2 extends Application {
     private static final int CHART_WIDTH = 500, CHART_HEIGHT = 800, CELL_SIZE = 16, SIDE_LENGTH = 9, MAX_ITERATIONS = 1000, max = 9;
     private static final String OUTPUT_DIR = "simulation_results";
@@ -115,26 +108,22 @@ public class LifeSimulation2 extends Application {
         );
         VBox layout = new VBox(controlPanel);
         for (LineChart<Number, Number> chart : charts.values()) layout.getChildren().add(chart);
-
         Scene scene = new Scene(layout, CHART_WIDTH, CHART_HEIGHT);
         stage.setTitle("Life Simulation - 3D Visualization and Analysis");
         stage.setScene(scene);
         stage.show();
     }
-
     private Slider createSlider(int max, int initialValue, Consumer<Integer> onChange) {
         Slider slider = new Slider(0, max, initialValue);
         slider.valueProperty().addListener((_, _, newVal) -> onChange.accept(newVal.intValue()));
         return slider;
     }
-
     public void runSimulations() {
         ExecutorService executor = Executors.newWorkStealingPool();
-
         for (int width = 1; width <= SIDE_LENGTH; width++) {
             for (int height = 1; height <= SIDE_LENGTH; height++) {
                 for (Landscape2.GridType gridType : Landscape2.GridType.values()) {
-                    Landscape2 scape = new Landscape2(width, height, 1, gridType, 2);
+                    Landscape2 scape = new Landscape2(width, height, 1, gridType, 3);
                     executor.submit(() -> {
                         simulateAllCombinations(scape);
                     });
@@ -293,7 +282,7 @@ public class LifeSimulation2 extends Application {
                 coords.add(row);
                 coords.add(col);
                 coords.add(0); // Fixed z-coordinate for 2D view
-                Cell cell = currentLandscape.getCell(coords); // Use new method
+                Cell cell = currentLandscape.getCell(coords);
                 if (cell == null) {
                     gc.setFill(Color.WHITE);
                 } else {
@@ -310,28 +299,39 @@ public class LifeSimulation2 extends Application {
     }
     private void startSimulation() {
         new Thread(() -> {
-            int maxIterations = 4096, minIterations = 4096, maxIterationsRecorded = 0, totalIterations = 0, validRuns = 0;
-
-            for (int i = 0; i < maxIterations; i++) {
+            // Replace primitive variables with array elements
+            int[] minIterationsHolder = {4096};
+            int[] maxIterationsRecordedHolder = {0};
+            int[] totalIterationsHolder = {0};
+            int[] validRunsHolder = {0};
+            for (int i = 0; i < 4096; i++) {
                 int iterations = 0;
-                while (currentLandscape.countLivingCells() > 0 && iterations < maxIterations) {
+                while (currentLandscape.countLivingCells() > 0 && iterations < 4096) {
                     currentLandscape.advance();
                     iterations++;
                     draw2DLandscape();
+                    try {
+                        Thread.sleep(256);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
-                if (iterations < maxIterations) {
-                    minIterations = Math.min(minIterations, iterations);
-                    maxIterationsRecorded = Math.max(maxIterationsRecorded, iterations);
-                    totalIterations += iterations;
-                    validRuns++;
+                if (iterations < 4096) {
+                    minIterationsHolder[0] = Math.min(minIterationsHolder[0], iterations);
+                    maxIterationsRecordedHolder[0] = Math.max(maxIterationsRecordedHolder[0], iterations);
+                    totalIterationsHolder[0] += iterations;
+                    validRunsHolder[0]++;
                 }
                 resetSimulation();
             }
-            double averageIterations = (double) totalIterations / validRuns;
-            updateCharts(minIterations, maxIterationsRecorded, averageIterations);
+            double averageIterations = (double) totalIterationsHolder[0] / validRunsHolder[0];
+            Platform.runLater(() -> updateCharts(
+                minIterationsHolder[0],
+                maxIterationsRecordedHolder[0],
+                averageIterations
+            ));
         }).start();
     }
-
     private static LineChart<Number, Number> createChart(String title) {
         NumberAxis xAxis = new NumberAxis();
         xAxis.setLabel("Number of Social Agents");
